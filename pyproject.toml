@@ -1,0 +1,15 @@
+[project]
+name = "news"
+version = "0.1.0"
+description = "ZennとQiitaのRSS記事をAIで分類・要約し、Discordに通知するBot"
+requires-python = ">=3.12"
+dependencies = [
+    "feedparser",
+    "python-dateutil",
+    "python-dotenv",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
