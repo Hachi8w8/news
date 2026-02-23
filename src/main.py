@@ -1,8 +1,9 @@
-"""エントリーポイント。RSS収集 → コンソール出力を行う。"""
+"""エントリーポイント。RSS収集 → 本文取得 → コンソール出力を行う。"""
 
 import logging
 
 from rss_collector import collect_articles
+from scraper import scrape_articles
 
 # ログの出力形式を設定（タイムスタンプ・レベル・モジュール名・メッセージ）
 logging.basicConfig(
@@ -13,24 +14,28 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    logger.info("=== RSS記事収集 開始 ===")
-
+    # --- Step 1: RSS収集 ---
+    logger.info("=== Step 1: RSS記事収集 ===")
     articles = collect_articles()
 
     if not articles:
         logger.info("新規記事はありませんでした")
         return
 
-    # 取得した記事を1件ずつ表示（概要は先頭100文字まで）
+    # --- Step 2: 本文取得 ---
+    logger.info("=== Step 2: 本文取得 ===")
+    articles = scrape_articles(articles)
+
+    # --- 結果表示 ---
     for i, article in enumerate(articles, 1):
-        summary_preview = article["summary"][:100] if article["summary"] else "(概要なし)"
+        content_preview = article["content"][:200] if article.get("content") else "(本文取得失敗)"
         logger.info(
             f"[{i}/{len(articles)}] [{article['source']}] {article['title']}\n"
             f"  URL: {article['url']}\n"
-            f"  概要: {summary_preview}"
+            f"  本文: {content_preview}"
         )
 
-    logger.info(f"=== RSS記事収集 完了: {len(articles)}件 ===")
+    logger.info(f"=== 処理完了: {len(articles)}件 ===")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ dependencies = [
     "feedparser",
     "python-dateutil",
     "python-dotenv",
+    "trafilatura>=2.0.0",
 ]
 
 [dependency-groups]
