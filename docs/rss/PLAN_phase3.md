@@ -53,7 +53,7 @@ GEMINI_API_KEY=your_api_key_here
 ### `src/config.py`（更新）
 
 **追加する設定値**:
-- 使用するモデル名（例: `gemini/gemini-2.5-flash`）
+- 使用するモデル名（例: `gemini/gemini-3-flash-preview`）
 - 分類時のTemperature（`0.1`）
 - 要約時のTemperature（`0.3`）
 - ~~本文の最大文字数~~ → 全文をそのまま渡す（切り詰めない）
@@ -64,7 +64,7 @@ GEMINI_API_KEY=your_api_key_here
 
 | プロバイダー | モデル名の例 |
 |---|---|
-| Gemini | `gemini/gemini-2.5-flash` |
+| Gemini | `gemini/gemini-3-flash-preview` |
 | OpenAI | `gpt-4o` |
 | Claude | `claude-3-5-sonnet-20241022` |
 
@@ -87,7 +87,7 @@ GEMINI_API_KEY=your_api_key_here
 
 2. **LLMへのAPIリクエスト**
    - ライブラリ: `litellm`
-   - モデル: `config.py` の設定値を参照（デフォルト: `gemini/gemini-2.5-flash`）
+   - モデル: `config.py` の設定値を参照（デフォルト: `gemini/gemini-3-flash-preview`）
    - 複数記事のタイトルと本文をまとめて1リクエストで送り、JSON形式で返答させる
    - Temperature: `0.1`（分類のブレを抑えるため低めに設定）
 

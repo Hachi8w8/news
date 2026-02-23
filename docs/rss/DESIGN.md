@@ -146,7 +146,7 @@ flowchart LR
 
 ### 3.1 使用モデル
 
-**Gemini 2.5 Flash（無料枠）**
+**Gemini 3 Flash（無料枠）**
 
 - ライブラリ: `litellm`（複数プロバイダー対応）
 - Free Tier（Gemini使用時）: 10 RPM / 250 RPD / 250,000 TPM

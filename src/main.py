@@ -1,7 +1,8 @@
-"""エントリーポイント。RSS収集 → 本文取得 → コンソール出力を行う。"""
+"""エントリーポイント。RSS収集 → 本文取得 → AI分類・要約 → コンソール出力を行う。"""
 
 import logging
 
+from classifier import classify_articles, summarize_articles
 from rss_collector import collect_articles
 from scraper import scrape_articles
 
@@ -26,13 +27,20 @@ def main() -> None:
     logger.info("=== Step 2: 本文取得 ===")
     articles = scrape_articles(articles)
 
+    # --- Step 3: AI分類 + 要約 ---
+    logger.info("=== Step 3: AI分類 ===")
+    articles = classify_articles(articles)
+
+    logger.info("=== Step 3: 要約生成 ===")
+    articles = summarize_articles(articles)
+
     # --- 結果表示 ---
     for i, article in enumerate(articles, 1):
-        content_preview = article["content"][:200] if article.get("content") else "(本文取得失敗)"
+        summary = article.get("ai_summary", "(要約なし)")
         logger.info(
-            f"[{i}/{len(articles)}] [{article['source']}] {article['title']}\n"
+            f"[{i}/{len(articles)}] [{article['category']}] [{article['source']}] {article['title']}\n"
             f"  URL: {article['url']}\n"
-            f"  本文: {content_preview}"
+            f"  要約: {summary}"
         )
 
     logger.info(f"=== 処理完了: {len(articles)}件 ===")

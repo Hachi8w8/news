@@ -5,6 +5,7 @@ description = "ZennとQiitaのRSS記事をAIで分類・要約し、Discordに�
 requires-python = ">=3.12"
 dependencies = [
     "feedparser",
+    "litellm>=1.81.14",
     "python-dateutil",
     "python-dotenv",
     "trafilatura>=2.0.0",
