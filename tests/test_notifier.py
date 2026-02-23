@@ -181,6 +181,42 @@ class TestSendBotLog:
         assert payload["embeds"][0]["color"] == 0xFF0000
         assert "https://example.com/a" in payload["embeds"][0]["description"]
 
+    # フォールバックなしの場合、緑色でGemini直接の件数が表示されること
+    @patch("notifier._send_webhook")
+    def test_フォールバックなしで緑色(self, mock_send):
+        mock_send.return_value = True
+        articles = [{"title": "記事", "url": "https://example.com/a", "category": "dev_ai"}]
+        stats = {"sent": 1, "failed": 0, "failures": []}
+        llm_stats = {"primary_calls": 2, "fallback_calls": 0, "fallback_cost": 0.0, "fallback_prompt_tokens": 0, "fallback_completion_tokens": 0}
+
+        with patch("notifier.DISCORD_WEBHOOK_BOT_LOG", "https://hook/log"):
+            send_bot_log(articles, stats, llm_stats)
+
+        payload = mock_send.call_args[0][1]
+        desc = payload["embeds"][0]["description"]
+        assert "Gemini直接 2回" in desc
+        assert "フォールバックなし" in desc
+        assert payload["embeds"][0]["color"] == 0x00FF00
+
+    # フォールバック発生時、黄色でコスト情報が表示されること
+    @patch("notifier._send_webhook")
+    def test_フォールバック発生で黄色とコスト表示(self, mock_send):
+        mock_send.return_value = True
+        articles = [{"title": "記事", "url": "https://example.com/a", "category": "dev_ai"}]
+        stats = {"sent": 1, "failed": 0, "failures": []}
+        llm_stats = {"primary_calls": 3, "fallback_calls": 6, "fallback_cost": 0.0012, "fallback_prompt_tokens": 15230, "fallback_completion_tokens": 2450}
+
+        with patch("notifier.DISCORD_WEBHOOK_BOT_LOG", "https://hook/log"):
+            send_bot_log(articles, stats, llm_stats)
+
+        payload = mock_send.call_args[0][1]
+        desc = payload["embeds"][0]["description"]
+        assert "Gemini直接 3回" in desc
+        assert "フォールバック(OpenRouter) 6回" in desc
+        assert "$0.0012" in desc
+        assert "15,230" in desc
+        assert payload["embeds"][0]["color"] == 0xFFAA00
+
     # DISCORD_WEBHOOK_BOT_LOG 未設定なら送信しないこと
     @patch("notifier._send_webhook")
     def test_Webhook未設定で送信しない(self, mock_send):

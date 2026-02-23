@@ -146,11 +146,19 @@ flowchart LR
 
 ### 3.1 使用モデル
 
-**Gemini 3 Flash（無料枠）**
+**Gemini 2.5 Flash（無料枠） + OpenRouter フォールバック**
 
 - ライブラリ: `litellm`（複数プロバイダー対応）
-- Free Tier（Gemini使用時）: 10 RPM / 250 RPD / 250,000 TPM
+- プライマリ: `gemini/gemini-2.5-flash`（Gemini直接、無料）
+- フォールバック: `openrouter/google/gemini-2.5-flash`（OpenRouter経由、有料だが安価）
+- Free Tier（Gemini使用時）: 10 RPM / 250 RPD / 250,000 TPM（ただし公式注記「実際の容量は変動する場合がある」）
 - 想定使用量: 分類で1-3回 + 要約で25-30回 = **1日最大33回**
+
+**フォールバック戦略**:
+- 通常はGemini直接（無料枠、6秒間隔）で呼び出す
+- レート制限（429）がリトライ上限に達したら、自動でOpenRouter経由に切り替える
+- 一度切り替わったら、以降の呼び出しは全てOpenRouter経由で行う（Geminiが制限中なのに毎回試す無駄を避ける）
+- フォールバック時はリクエスト間隔を2秒に短縮する（OpenRouterのレート制限は緩い）
 
 ### 3.2 Step 1: AI判定 + カテゴリ分類（全文ベース）
 
@@ -180,7 +188,7 @@ flowchart LR
 - バッチサイズ: 5-10件/リクエスト
 - 本文は全文をそのまま渡す（大半の記事は5,000文字前後で問題ない。長い記事でTPM制限に達した場合は429リトライで対応）
 - Temperature: 0.1（安定した分類のため低温度）
-- レート制限対策: 6秒スリープ（Gemini無料枠 10 RPM対応）
+- レート制限対策: 6秒スリープ（Gemini無料枠 10 RPM対応）、フォールバック時は2秒スリープ、429エラー時はリトライ（最大3回）→ リトライ超過でフォールバック
 
 ### 3.3 Step 2: 要約生成（全文ベース）
 
@@ -193,7 +201,7 @@ flowchart LR
 - 本文は全文をそのまま渡す（切り詰めによる要約精度低下を防ぐ。TPM制限超過時は429リトライで対応）
 - Temperature: 0.3
 - 要約長: 2-3行、最大400文字
-- レート制限対策: 6秒スリープ（10 RPM対応）、429エラー時はリトライ（最大3回）
+- レート制限対策: 6秒スリープ（Gemini）/ 2秒スリープ（OpenRouterフォールバック時）、429エラー時はリトライ（最大3回）→ リトライ超過でフォールバック
 
 ---
 
@@ -330,7 +338,8 @@ flowchart LR
 - キャッシュ: 処理済みURL（GitHub Actions Cache使用）
 
 **必要な環境変数**:
-- `GEMINI_API_KEY`
+- `GEMINI_API_KEY`（プライマリモデル用）
+- `OPENROUTER_API_KEY`（フォールバックモデル用）
 - `DISCORD_WEBHOOK_DEV_AI`
 - `DISCORD_WEBHOOK_AI_NEWS`
 - `DISCORD_WEBHOOK_OTHER`

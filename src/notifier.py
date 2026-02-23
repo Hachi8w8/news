@@ -109,7 +109,7 @@ def notify_articles(articles: list[dict]) -> dict:
     return stats
 
 
-def send_bot_log(articles: list[dict], stats: dict) -> None:
+def send_bot_log(articles: list[dict], stats: dict, llm_stats: dict | None = None) -> None:
     """実行結果サマリーを #bot-log チャンネルに送信する。"""
     if not DISCORD_WEBHOOK_BOT_LOG:
         logger.warning("DISCORD_WEBHOOK_BOT_LOG が未設定。サマリー送信をスキップ")
@@ -131,12 +131,29 @@ def send_bot_log(articles: list[dict], stats: dict) -> None:
         for f in stats["failures"]:
             lines.append(f"- {f['url']} ({f['reason']})")
 
+    used_fallback = False
+    if llm_stats:
+        primary = llm_stats.get("primary_calls", 0)
+        fallback = llm_stats.get("fallback_calls", 0)
+        used_fallback = fallback > 0
+
+        if used_fallback:
+            cost = llm_stats.get("fallback_cost", 0.0)
+            prompt_tokens = llm_stats.get("fallback_prompt_tokens", 0)
+            completion_tokens = llm_stats.get("fallback_completion_tokens", 0)
+            lines.append(f"⚠️ **LLM**: Gemini直接 {primary}回 → フォールバック(OpenRouter) {fallback}回")
+            lines.append(f"💰 **フォールバックコスト**: ${cost:.4f}（入力: {prompt_tokens:,} tokens / 出力: {completion_tokens:,} tokens）")
+        else:
+            lines.append(f"**LLM**: Gemini直接 {primary}回（フォールバックなし）")
+
+    color = 0xFF0000 if stats["failed"] else (0xFFAA00 if used_fallback else 0x00FF00)
+
     payload = {
         "embeds": [
             {
                 "title": "実行結果サマリー",
                 "description": "\n".join(lines),
-                "color": 0xFF0000 if stats["failed"] else 0x00FF00,
+                "color": color,
             }
         ]
     }

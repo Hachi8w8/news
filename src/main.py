@@ -3,7 +3,7 @@
 import logging
 
 from cache_manager import filter_new_articles, load_cache, save_cache
-from classifier import classify_articles, summarize_articles
+from classifier import classify_articles, get_llm_stats, summarize_articles
 from notifier import notify_articles, send_bot_log
 from rss_collector import collect_articles
 from scraper import scrape_articles
@@ -51,7 +51,8 @@ def main() -> None:
 
     # --- Step 6: bot-logサマリー送信 ---
     logger.info("=== Step 6: 実行結果サマリー送信 ===")
-    send_bot_log(articles, stats)
+    llm_stats = get_llm_stats()
+    send_bot_log(articles, stats, llm_stats)
 
     # --- Step 7: キャッシュ保存 ---
     logger.info("=== Step 7: キャッシュ保存 ===")

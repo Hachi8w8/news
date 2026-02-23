@@ -3,14 +3,29 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import litellm
 import pytest
 
+import classifier
 from classifier import (
+    _call_llm,
     _get_article_text,
     _strip_code_block,
     classify_articles,
+    get_llm_stats,
     summarize_articles,
 )
+
+
+def _make_response(content="response", prompt_tokens=100, completion_tokens=50):
+    """テスト用のLLMレスポンスモックを生成する。"""
+    resp = MagicMock()
+    resp.choices = [MagicMock()]
+    resp.choices[0].message.content = content
+    resp.usage.prompt_tokens = prompt_tokens
+    resp.usage.completion_tokens = completion_tokens
+    resp.model = "test-model"
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +89,67 @@ class TestGetArticleText:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# _call_llm（フォールバック）
+# ---------------------------------------------------------------------------
+# プライマリモデルでレート制限が来たらフォールバックモデルに切り替わること。
+# ---------------------------------------------------------------------------
+
+
+class TestCallLlmFallback:
+    def setup_method(self):
+        classifier._use_fallback = False
+        classifier._llm_stats.update(
+            primary_calls=0, fallback_calls=0, fallback_cost=0.0,
+            fallback_prompt_tokens=0, fallback_completion_tokens=0,
+        )
+
+    # プライマリが成功すればそのまま返り、primary_calls がカウントされること
+    @patch("classifier._call_llm_single")
+    def test_プライマリ成功(self, mock_single):
+        mock_single.return_value = _make_response("response")
+        result = _call_llm("prompt", 0.1, "primary", "fallback")
+        assert result == "response"
+        mock_single.assert_called_once_with("prompt", 0.1, "primary")
+        assert classifier._use_fallback is False
+        assert get_llm_stats()["primary_calls"] == 1
+        assert get_llm_stats()["fallback_calls"] == 0
+
+    # プライマリで429 → フォールバックに切り替わり、fallback_calls がカウントされること
+    @patch("classifier.litellm.completion_cost", return_value=0.001)
+    @patch("classifier._call_llm_single")
+    def test_プライマリ429でフォールバック(self, mock_single, mock_cost):
+        mock_single.side_effect = [
+            litellm.RateLimitError("rate limit", "model", "provider"),
+            _make_response("fallback response", prompt_tokens=200, completion_tokens=80),
+        ]
+        result = _call_llm("prompt", 0.1, "primary", "fallback")
+        assert result == "fallback response"
+        assert classifier._use_fallback is True
+        assert mock_single.call_count == 2
+        stats = get_llm_stats()
+        assert stats["primary_calls"] == 0
+        assert stats["fallback_calls"] == 1
+        assert stats["fallback_prompt_tokens"] == 200
+        assert stats["fallback_completion_tokens"] == 80
+        assert stats["fallback_cost"] == 0.001
+
+    # フォールバック中はプライマリを試さないこと
+    @patch("classifier.litellm.completion_cost", return_value=0.0005)
+    @patch("classifier._call_llm_single")
+    def test_フォールバック中はプライマリをスキップ(self, mock_single, mock_cost):
+        classifier._use_fallback = True
+        mock_single.return_value = _make_response("fallback response")
+        result = _call_llm("prompt", 0.1, "primary", "fallback")
+        assert result == "fallback response"
+        mock_single.assert_called_once_with("prompt", 0.1, "fallback")
+        assert get_llm_stats()["fallback_calls"] == 1
+
+
 class TestClassifyArticles:
+    def setup_method(self):
+        classifier._use_fallback = False
+
     # LLMが正しいJSON応答を返した場合、各記事に正しいカテゴリが付くこと
     @patch("classifier._call_llm")
     @patch("classifier.time.sleep")
@@ -126,6 +201,9 @@ class TestClassifyArticles:
 
 
 class TestSummarizeArticles:
+    def setup_method(self):
+        classifier._use_fallback = False
+
     # LLMが要約を返した場合、ai_summary フィールドに格納されること
     @patch("classifier._call_llm")
     @patch("classifier.time.sleep")

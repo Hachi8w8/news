@@ -9,16 +9,33 @@ import litellm
 
 from config import (
     CLASSIFY_BATCH_SIZE,
+    CLASSIFY_FALLBACK_MODEL,
     CLASSIFY_MODEL,
     CLASSIFY_TEMPERATURE,
+    LLM_FALLBACK_REQUEST_INTERVAL,
     LLM_MAX_RETRIES,
     LLM_REQUEST_INTERVAL,
     LLM_RETRY_DELAYS,
+    SUMMARY_FALLBACK_MODEL,
     SUMMARY_MODEL,
     SUMMARY_TEMPERATURE,
 )
 
 logger = logging.getLogger(__name__)
+
+_use_fallback = False
+_llm_stats = {
+    "primary_calls": 0,
+    "fallback_calls": 0,
+    "fallback_cost": 0.0,
+    "fallback_prompt_tokens": 0,
+    "fallback_completion_tokens": 0,
+}
+
+
+def get_llm_stats() -> dict:
+    """LLM呼び出しの統計情報を返す。"""
+    return dict(_llm_stats)
 
 VALID_CATEGORIES = {"dev_ai", "industry", "not_ai"}
 
@@ -76,8 +93,8 @@ def _strip_code_block(text: str) -> str:
     return text.strip()
 
 
-def _call_llm(prompt: str, temperature: float, model: str) -> str:
-    """LLMを呼び出してレスポンスのテキストを返す。429/5xxエラー時はリトライする。"""
+def _call_llm_single(prompt: str, temperature: float, model: str):
+    """単一モデルでLLMを呼び出す。429/5xxエラー時はリトライする。レスポンス全体を返す。"""
     for attempt in range(LLM_MAX_RETRIES + 1):
         try:
             response = litellm.completion(
@@ -85,7 +102,7 @@ def _call_llm(prompt: str, temperature: float, model: str) -> str:
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
             )
-            return response.choices[0].message.content
+            return response
         except litellm.RateLimitError:
             if attempt < LLM_MAX_RETRIES:
                 delay = LLM_RETRY_DELAYS[attempt]
@@ -102,6 +119,42 @@ def _call_llm(prompt: str, temperature: float, model: str) -> str:
                 raise
 
 
+def _record_fallback_cost(response) -> None:
+    """フォールバック呼び出しのコストとトークン数を記録する。"""
+    usage = getattr(response, "usage", None)
+    if usage:
+        _llm_stats["fallback_prompt_tokens"] += getattr(usage, "prompt_tokens", 0) or 0
+        _llm_stats["fallback_completion_tokens"] += getattr(usage, "completion_tokens", 0) or 0
+    try:
+        cost = litellm.completion_cost(completion_response=response)
+        _llm_stats["fallback_cost"] += cost
+    except Exception:
+        pass
+
+
+def _call_llm(prompt: str, temperature: float, model: str, fallback_model: str) -> str:
+    """プライマリモデルで呼び出し、レート制限時はフォールバックモデルに切り替える。"""
+    global _use_fallback
+
+    if _use_fallback:
+        response = _call_llm_single(prompt, temperature, fallback_model)
+        _llm_stats["fallback_calls"] += 1
+        _record_fallback_cost(response)
+        return response.choices[0].message.content
+
+    try:
+        response = _call_llm_single(prompt, temperature, model)
+        _llm_stats["primary_calls"] += 1
+        return response.choices[0].message.content
+    except litellm.RateLimitError:
+        _use_fallback = True
+        logger.warning(f"プライマリ（{model}）のレート制限超過。フォールバック（{fallback_model}）に切り替えます")
+        response = _call_llm_single(prompt, temperature, fallback_model)
+        _llm_stats["fallback_calls"] += 1
+        _record_fallback_cost(response)
+        return response.choices[0].message.content
+
+
 def classify_articles(articles: list[dict]) -> list[dict]:
     """記事をバッチでLLMに送り、カテゴリを付与して返す。"""
     # バッチに分割
@@ -116,7 +169,7 @@ def classify_articles(articles: list[dict]) -> list[dict]:
         prompt = CLASSIFY_PROMPT.format(articles=articles_text)
 
         try:
-            raw_response = _call_llm(prompt, CLASSIFY_TEMPERATURE, CLASSIFY_MODEL)
+            raw_response = _call_llm(prompt, CLASSIFY_TEMPERATURE, CLASSIFY_MODEL, CLASSIFY_FALLBACK_MODEL)
             parsed = json.loads(_strip_code_block(raw_response))
 
             for item in parsed:
@@ -133,7 +186,7 @@ def classify_articles(articles: list[dict]) -> list[dict]:
                 url_to_category[a["url"]] = "not_ai"
 
         if batch_idx < len(batches) - 1:
-            time.sleep(LLM_REQUEST_INTERVAL)
+            time.sleep(LLM_FALLBACK_REQUEST_INTERVAL if _use_fallback else LLM_REQUEST_INTERVAL)
 
     # 各記事に category を付与
     for article in articles:
@@ -158,14 +211,14 @@ def summarize_articles(articles: list[dict]) -> list[dict]:
         prompt = SUMMARY_PROMPT.format(title=article["title"], content=content)
 
         try:
-            raw_response = _call_llm(prompt, SUMMARY_TEMPERATURE, SUMMARY_MODEL)
+            raw_response = _call_llm(prompt, SUMMARY_TEMPERATURE, SUMMARY_MODEL, SUMMARY_FALLBACK_MODEL)
             article["ai_summary"] = raw_response.strip()[:400]
         except Exception:
             logger.exception(f"要約生成失敗: {article['url']}")
             article["ai_summary"] = ""
 
         if i < total - 1:
-            time.sleep(LLM_REQUEST_INTERVAL)
+            time.sleep(LLM_FALLBACK_REQUEST_INTERVAL if _use_fallback else LLM_REQUEST_INTERVAL)
 
     success = sum(1 for a in articles if a.get("ai_summary"))
     logger.info(f"要約完了: 成功 {success}件 / 失敗 {total - success}件 / 合計 {total}件")
