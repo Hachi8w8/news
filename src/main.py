@@ -1,9 +1,10 @@
-"""エントリーポイント。RSS収集 → 重複排除 → 本文取得 → AI分類・要約 → コンソール出力を行う。"""
+"""エントリーポイント。RSS収集 → 重複排除 → 本文取得 → AI分類・要約 → Discord通知を行う。"""
 
 import logging
 
 from cache_manager import filter_new_articles, load_cache, save_cache
 from classifier import classify_articles, summarize_articles
+from notifier import notify_articles, send_bot_log
 from rss_collector import collect_articles
 from scraper import scrape_articles
 
@@ -44,17 +45,16 @@ def main() -> None:
     logger.info("=== Step 4: 要約生成 ===")
     articles = summarize_articles(articles)
 
-    # --- 結果表示 ---
-    for i, article in enumerate(articles, 1):
-        summary = article.get("ai_summary", "(要約なし)")
-        logger.info(
-            f"[{i}/{len(articles)}] [{article['category']}] [{article['source']}] {article['title']}\n"
-            f"  URL: {article['url']}\n"
-            f"  要約: {summary}"
-        )
+    # --- Step 5: Discord通知 ---
+    logger.info("=== Step 5: Discord通知 ===")
+    stats = notify_articles(articles)
 
-    # --- Step 5: キャッシュ保存 ---
-    logger.info("=== Step 5: キャッシュ保存 ===")
+    # --- Step 6: bot-logサマリー送信 ---
+    logger.info("=== Step 6: 実行結果サマリー送信 ===")
+    send_bot_log(articles, stats)
+
+    # --- Step 7: キャッシュ保存 ---
+    logger.info("=== Step 7: キャッシュ保存 ===")
     save_cache(cache, articles)
 
     logger.info(f"=== 処理完了: {len(articles)}件 ===")

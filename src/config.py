@@ -43,6 +43,23 @@ LLM_REQUEST_INTERVAL = 2
 LLM_MAX_RETRIES = 3
 LLM_RETRY_DELAYS = [10, 30, 60]
 
+# --- Discord Webhook設定 ---
+DISCORD_WEBHOOKS = {
+    "dev_ai": os.environ.get("DISCORD_WEBHOOK_DEV_AI", ""),
+    "industry": os.environ.get("DISCORD_WEBHOOK_AI_NEWS", ""),
+    "not_ai": os.environ.get("DISCORD_WEBHOOK_OTHER", ""),
+}
+DISCORD_WEBHOOK_BOT_LOG = os.environ.get("DISCORD_WEBHOOK_BOT_LOG", "")
+
+DISCORD_COLORS = {
+    "dev_ai": 0x00FF00,
+    "industry": 0x0088FF,
+    "not_ai": 0x808080,
+}
+
+DISCORD_SEND_INTERVAL = 1
+DISCORD_MAX_RETRIES = 3
+
 # --- キャッシュ設定 ---
 CACHE_DIR = ".cache"
 CACHE_FILE = os.path.join(CACHE_DIR, "processed_urls.json")
