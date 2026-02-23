@@ -1,7 +1,10 @@
+"""エントリーポイント。RSS収集 → コンソール出力を行う。"""
+
 import logging
 
 from rss_collector import collect_articles
 
+# ログの出力形式を設定（タイムスタンプ・レベル・モジュール名・メッセージ）
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -18,6 +21,7 @@ def main() -> None:
         logger.info("新規記事はありませんでした")
         return
 
+    # 取得した記事を1件ずつ表示（概要は先頭100文字まで）
     for i, article in enumerate(articles, 1):
         summary_preview = article["summary"][:100] if article["summary"] else "(概要なし)"
         logger.info(

@@ -40,6 +40,16 @@ uv run python src/main.py
 
 ---
 
+## テストの実行
+
+```bash
+uv run pytest tests/ -v
+```
+
+`-v` をつけると各テストケースの結果が1行ずつ表示される。省略しても動作は同じ。
+
+---
+
 ## 依存パッケージの追加方法
 
 ```bash

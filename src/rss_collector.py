@@ -1,3 +1,5 @@
+"""RSSフィードから記事を収集するモジュール。"""
+
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -11,23 +13,36 @@ logger = logging.getLogger(__name__)
 
 
 def normalize_url(url: str) -> str:
-    """クエリパラメータ・フラグメント・末尾スラッシュを除去してURLを正規化する。"""
+    """クエリパラメータ・フラグメント・末尾スラッシュを除去してURLを正規化する。
+
+    例: "https://zenn.dev/articles/abc?utm=feed#s1/"
+      → "https://zenn.dev/articles/abc"
+    """
     parsed = urlparse(url)
     path = parsed.path.rstrip("/")
+    # query="" と fragment="" を渡すことで ?... や #... を除去
     normalized = urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
     return normalized
 
 
 def _get_article_time(entry: feedparser.FeedParserDict) -> datetime | None:
-    """記事の日時を取得する。updated_parsed → published_parsed の優先順。"""
+    """記事の日時を取得する。updated_parsed → published_parsed の優先順。
+
+    フィード形式によって日時フィールドが異なるため、両方を試す。
+    どちらもなければ None を返す。
+    """
     time_struct = entry.get("updated_parsed") or entry.get("published_parsed")
     if time_struct is None:
         return None
+    # feedparser の time_struct は time.struct_time なので datetime に変換
     return datetime(*time_struct[:6], tzinfo=timezone.utc)
 
 
 def _is_within_hours(article_time: datetime | None, hours: int) -> bool:
-    """記事が指定時間以内かどうかを判定する。日時なしの場合はTrueを返す（取りこぼし防止）。"""
+    """記事が指定時間以内かどうかを判定する。
+
+    日時なし（None）の場合は True を返す（取りこぼし防止）。
+    """
     if article_time is None:
         return True
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -35,9 +50,13 @@ def _is_within_hours(article_time: datetime | None, hours: int) -> bool:
 
 
 def _extract_summary(entry: feedparser.FeedParserDict) -> str:
-    """記事の概要テキストを取得する。"""
+    """記事の概要テキストを取得する。
+
+    summary フィールドがなければ content フィールドにフォールバック。
+    """
     summary = entry.get("summary", "")
     if not summary:
+        # Atom フィードでは content に本文が入っている場合がある
         content = entry.get("content")
         if content and isinstance(content, list):
             summary = content[0].get("value", "")
@@ -45,13 +64,14 @@ def _extract_summary(entry: feedparser.FeedParserDict) -> str:
 
 
 def _fetch_feed(feed_config: dict) -> list[dict]:
-    """単一フィードから記事を取得し、フィルタリングして返す。"""
+    """単一フィードから記事を取得し、指定した時間以内の記事だけを返す。"""
     url = feed_config["url"]
     source = feed_config["source"]
 
     logger.info(f"フィード取得開始: {source} ({url})")
     feed = feedparser.parse(url)
 
+    # bozo: feedparser が壊れたXMLを検出した場合のフラグ
     if feed.bozo:
         logger.warning(f"フィードパースに問題あり: {source} - {feed.bozo_exception}")
 
@@ -61,6 +81,7 @@ def _fetch_feed(feed_config: dict) -> list[dict]:
 
     articles = []
     for entry in feed.entries:
+        # 指定時間より古い記事はスキップ
         article_time = _get_article_time(entry)
         if not _is_within_hours(article_time, ARTICLE_FETCH_HOURS):
             continue
@@ -82,7 +103,7 @@ def _fetch_feed(feed_config: dict) -> list[dict]:
 
 
 def collect_articles() -> list[dict]:
-    """全RSSフィードから記事を収集して返す。"""
+    """全RSSフィードから記事を収集して返す。外部から呼ぶメインの関数。"""
     all_articles = []
     for feed_config in RSS_FEEDS:
         try:
@@ -91,6 +112,7 @@ def collect_articles() -> list[dict]:
         except Exception:
             logger.exception(f"フィード取得失敗: {feed_config['source']}")
 
+    # 同一URLの記事を除去（正規化済みURLで比較）
     seen_urls: set[str] = set()
     unique_articles = []
     for article in all_articles:
