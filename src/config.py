@@ -42,3 +42,8 @@ LLM_REQUEST_INTERVAL = 2
 # リトライ設定
 LLM_MAX_RETRIES = 3
 LLM_RETRY_DELAYS = [10, 30, 60]
+
+# --- キャッシュ設定 ---
+CACHE_DIR = ".cache"
+CACHE_FILE = os.path.join(CACHE_DIR, "processed_urls.json")
+CACHE_EXPIRE_DAYS = 30

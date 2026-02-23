@@ -1,7 +1,8 @@
-"""エントリーポイント。RSS収集 → 本文取得 → AI分類・要約 → コンソール出力を行う。"""
+"""エントリーポイント。RSS収集 → 重複排除 → 本文取得 → AI分類・要約 → コンソール出力を行う。"""
 
 import logging
 
+from cache_manager import filter_new_articles, load_cache, save_cache
 from classifier import classify_articles, summarize_articles
 from rss_collector import collect_articles
 from scraper import scrape_articles
@@ -23,15 +24,24 @@ def main() -> None:
         logger.info("新規記事はありませんでした")
         return
 
-    # --- Step 2: 本文取得 ---
-    logger.info("=== Step 2: 本文取得 ===")
+    # --- Step 2: キャッシュ照合 ---
+    logger.info("=== Step 2: キャッシュ照合（重複排除） ===")
+    cache = load_cache()
+    articles = filter_new_articles(articles, cache)
+
+    if not articles:
+        logger.info("未処理の記事はありませんでした（全てキャッシュ済み）")
+        return
+
+    # --- Step 3: 本文取得 ---
+    logger.info("=== Step 3: 本文取得 ===")
     articles = scrape_articles(articles)
 
-    # --- Step 3: AI分類 + 要約 ---
-    logger.info("=== Step 3: AI分類 ===")
+    # --- Step 4: AI分類 + 要約 ---
+    logger.info("=== Step 4: AI分類 ===")
     articles = classify_articles(articles)
 
-    logger.info("=== Step 3: 要約生成 ===")
+    logger.info("=== Step 4: 要約生成 ===")
     articles = summarize_articles(articles)
 
     # --- 結果表示 ---
@@ -42,6 +52,10 @@ def main() -> None:
             f"  URL: {article['url']}\n"
             f"  要約: {summary}"
         )
+
+    # --- Step 5: キャッシュ保存 ---
+    logger.info("=== Step 5: キャッシュ保存 ===")
+    save_cache(cache, articles)
 
     logger.info(f"=== 処理完了: {len(articles)}件 ===")
 
